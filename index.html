@@ -1,0 +1,1180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>东京行程地图 6/30-7/5</title>
+  <meta name="description" content="东京 6/30-7/5 顶部联动地图、日期切换、交通费用和地点备注">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --phone: #fffdf8;
+      --card: #ffffff;
+      --ink: #20251f;
+      --muted: #6f766e;
+      --line: #e5ded0;
+      --hub: #256f64;
+      --place: #c65f3a;
+      --transit: #315f9f;
+      --hub-soft: #e7f1ed;
+      --place-soft: #fae8df;
+      --transit-soft: #e7eefb;
+      --warn: #946011;
+      --warn-soft: #fff4dd;
+      --shadow: 0 16px 46px rgba(57, 48, 36, .12);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 16% -5%, rgba(37, 111, 100, .16), transparent 32rem),
+        radial-gradient(circle at 86% 0%, rgba(198, 95, 58, .10), transparent 28rem),
+        var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+      line-height: 1.52;
+    }
+
+    a { color: inherit; }
+    button, textarea { font: inherit; }
+
+    .shell {
+      width: min(460px, 100%);
+      margin: 0 auto;
+      min-height: 100vh;
+      background: var(--phone);
+      box-shadow: 0 0 0 1px rgba(229, 222, 208, .8), var(--shadow);
+    }
+
+    .topbar {
+      padding: 14px 16px 10px;
+      background: linear-gradient(180deg, #fffdf8, rgba(255,253,248,.92));
+    }
+
+    .kicker {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    h1 {
+      margin: 8px 0 4px;
+      font-size: 26px;
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .map-wrap {
+      position: relative;
+      margin: 8px 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      background: #e8e0d2;
+      box-shadow: 0 10px 28px rgba(32, 37, 31, .08);
+    }
+
+    #map {
+      height: 310px;
+      width: 100%;
+    }
+
+    .map-badge {
+      position: absolute;
+      left: 10px;
+      top: 10px;
+      z-index: 500;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      padding: 6px 9px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.9);
+      color: var(--hub);
+      border: 1px solid rgba(229,222,208,.88);
+      font-size: 12px;
+      font-weight: 900;
+      backdrop-filter: blur(10px);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 10px 12px 8px;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      flex: 0 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: .18s ease;
+    }
+    .tab.active {
+      color: #fff;
+      background: var(--ink);
+      border-color: var(--ink);
+      box-shadow: 0 8px 18px rgba(32, 37, 31, .18);
+    }
+
+    .day-panel {
+      padding: 0 12px 18px;
+    }
+
+    .route-card,
+    .block,
+    .summary-card,
+    .notes-panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 10px 26px rgba(57, 48, 36, .07);
+    }
+
+    .route-card {
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .day-title-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+      margin-bottom: 12px;
+    }
+    .day-title-row h2 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+    .day-title-row p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .cost-pill {
+      flex: 0 0 auto;
+      min-width: 82px;
+      padding: 7px 8px;
+      border-radius: 12px;
+      background: var(--transit-soft);
+      color: var(--transit);
+      font-size: 12px;
+      font-weight: 950;
+      text-align: center;
+    }
+
+    .chain {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 5px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 900;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .chip.hub { color: var(--hub); background: var(--hub-soft); border-color: #c6ded6; }
+    .chip.place { color: var(--place); background: var(--place-soft); border-color: #efc8b7; }
+    .chip.transit { color: var(--transit); background: var(--transit-soft); border-color: #cbd9f3; }
+    .chip.warn { color: var(--warn); background: var(--warn-soft); border-color: #efd29c; }
+    .arrow { color: #998d7e; font-weight: 900; font-size: 12px; }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .mini {
+      padding: 10px;
+      border-radius: 12px;
+      background: #fbf7ef;
+      border: 1px solid #eee5d6;
+    }
+    .mini span {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .mini b {
+      display: block;
+      font-size: 13px;
+      line-height: 1.36;
+    }
+
+    .block {
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .block-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      background: #fbf7ef;
+      border-bottom: 1px solid var(--line);
+    }
+    .block-head h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+    .block-head span {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 850;
+      text-align: right;
+    }
+
+    .transport-list {
+      display: grid;
+      gap: 9px;
+      padding: 12px;
+    }
+    .transport-item {
+      display: grid;
+      gap: 7px;
+      padding: 11px;
+      border: 1px solid #eee5d6;
+      border-radius: 13px;
+      background: #fffdfa;
+    }
+    .transport-main {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: start;
+    }
+    .transport-main strong {
+      font-size: 14px;
+      line-height: 1.28;
+    }
+    .transport-main small {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+    .transport-route {
+      color: #40493f;
+      font-size: 12px;
+    }
+    .transport-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .walk-alert {
+      display: inline-flex;
+      color: var(--warn);
+      background: var(--warn-soft);
+      border: 1px solid #efd29c;
+      border-radius: 7px;
+      padding: 2px 6px;
+      font-weight: 900;
+    }
+
+    .place-list {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+    }
+    .place-card {
+      display: grid;
+      gap: 9px;
+      padding: 12px;
+      border: 1px solid #eee5d6;
+      border-radius: 14px;
+      background: #fffdfa;
+    }
+    .place-head {
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 9px;
+      align-items: start;
+    }
+    .pin {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 29px;
+      height: 29px;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--place);
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .pin.hub { background: var(--hub); }
+    .place-card h4 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.24;
+    }
+    .place-card small {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .place-card p {
+      margin: 0;
+      color: #424c42;
+      font-size: 12px;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+    .actions a,
+    .actions button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 31px;
+      padding: 6px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      text-decoration: none;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .actions .map-action { color: var(--hub); border-color: #c6ded6; }
+
+    .saved-note,
+    .saved-links {
+      padding: 8px 9px;
+      border-radius: 11px;
+      background: #fbf7ef;
+      border: 1px solid #eee5d6;
+      color: #424c42;
+      font-size: 12px;
+    }
+    .saved-note b,
+    .saved-links b { color: var(--ink); }
+    .saved-links {
+      display: grid;
+      gap: 7px;
+    }
+    .saved-link-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .saved-link-row a {
+      color: var(--transit);
+      font-weight: 850;
+      overflow-wrap: anywhere;
+    }
+    .delete-link,
+    .note-delete {
+      border: 1px solid #efd0c5;
+      background: #fff7f3;
+      color: #a44a2b;
+      border-radius: 999px;
+      padding: 4px 7px;
+      font-size: 11px;
+      font-weight: 900;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+    .inline-panel {
+      display: grid;
+      gap: 8px;
+      padding: 9px;
+      border-radius: 12px;
+      background: #fbf7ef;
+      border: 1px solid #eee5d6;
+    }
+    .inline-panel.hidden { display: none; }
+    .inline-panel textarea,
+    .inline-panel input {
+      width: 100%;
+      border: 1px solid #ded6c6;
+      border-radius: 12px;
+      padding: 9px;
+      color: var(--ink);
+      background: #fff;
+      font-size: 13px;
+      line-height: 1.44;
+    }
+    .inline-panel textarea {
+      min-height: 82px;
+      resize: vertical;
+    }
+    .panel-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+    .panel-actions button {
+      min-height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--ink);
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .panel-actions .save { color: var(--hub); border-color: #c6ded6; }
+
+    .utility {
+      padding: 0 12px 22px;
+    }
+    .summary-card,
+    .notes-panel {
+      padding: 14px;
+      margin-top: 12px;
+    }
+    .summary-card h3,
+    .notes-panel h3 {
+      margin: 0 0 9px;
+      font-size: 16px;
+    }
+    .summary-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 12px;
+      color: #424c42;
+    }
+    .summary-list li {
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      gap: 8px;
+      padding: 8px;
+      border-radius: 10px;
+      background: #fbf7ef;
+    }
+    .summary-list b { color: var(--hub); }
+    .note-tools {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 9px;
+    }
+    .note-tools button {
+      min-height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--hub);
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .note-export {
+      width: 100%;
+      min-height: 110px;
+      resize: vertical;
+      border: 1px solid #ded6c6;
+      border-radius: 12px;
+      padding: 9px;
+      font-size: 12px;
+    }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%) translateY(20px);
+      z-index: 9999;
+      opacity: 0;
+      pointer-events: none;
+      padding: 9px 12px;
+      border-radius: 999px;
+      background: rgba(32, 37, 31, .92);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 850;
+      transition: .18s ease;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .footer {
+      padding: 0 12px 24px;
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .leaflet-marker-icon.hub-marker,
+    .leaflet-marker-icon.place-marker {
+      border-radius: 50%;
+      color: #fff;
+      display: grid;
+      place-items: center;
+      border: 3px solid #fff;
+      box-shadow: 0 4px 14px rgba(0,0,0,.24);
+      font-weight: 950;
+      font-size: 12px;
+    }
+    .leaflet-marker-icon.hub-marker { background: var(--hub); }
+    .leaflet-marker-icon.place-marker { background: var(--place); }
+
+    @media (min-width: 760px) {
+      body { padding: 24px 0; }
+      .shell { border-radius: 28px; overflow: hidden; }
+    }
+
+    @media (max-width: 420px) {
+      #map { height: 290px; }
+      .shell { box-shadow: none; }
+      .mini-grid { grid-template-columns: 1fr; }
+      .summary-list li { grid-template-columns: 42px 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="kicker"><span>Tokyo Trip Map</span><span>6/30-7/5</span></div>
+      <h1>东京行程地图</h1>
+      <p class="sub">点选日期，地图、路线、交通和地点卡一起切换。</p>
+    </header>
+
+    <section class="map-wrap" aria-label="顶部联动地图">
+      <div id="map"></div>
+      <div class="map-badge" id="mapBadge">D1 到达</div>
+    </section>
+
+    <nav class="tabs" id="tabs" aria-label="日期切换"></nav>
+
+    <section class="day-panel" id="dayPanel" aria-live="polite"></section>
+
+    <section class="utility">
+      <article class="summary-card">
+        <h3>步行超过 1km 提醒</h3>
+        <ul class="summary-list">
+          <li><b>7/1</b><span>银座内部累计约 3.5-5km，超过 1km。</span></li>
+          <li><b>7/2</b><span>芝公园附近到部分地铁站约 1.0-1.3km，超过 1km。</span></li>
+          <li><b>7/3</b><span>青山直接走到涩谷约 1.5km 以上，建议坐一站。</span></li>
+          <li><b>7/4</b><span>镰仓站到鹤冈八幡宫约 1.1km；江之岛站到海边约 1.0-1.3km。</span></li>
+        </ul>
+      </article>
+
+      <article class="summary-card">
+        <h3>每日交通费估算</h3>
+        <ul class="summary-list">
+          <li><b>6/30</b><span>约 ¥1,550，约 71 元。</span></li>
+          <li><b>7/1</b><span>约 ¥440-¥580，约 20-27 元。</span></li>
+          <li><b>7/2</b><span>约 ¥900-¥1,150，约 41-53 元。</span></li>
+          <li><b>7/3</b><span>约 ¥1,020-¥1,300，约 47-60 元。</span></li>
+          <li><b>7/4</b><span>约 ¥3,250-¥3,850，约 150-177 元。</span></li>
+          <li><b>7/5</b><span>约 ¥2,530-¥3,090，约 116-142 元。</span></li>
+        </ul>
+      </article>
+
+      <article class="notes-panel" id="notes">
+        <h3>备注备份</h3>
+        <div class="note-tools">
+          <button type="button" id="exportNotes">导出备注和链接</button>
+          <button type="button" id="clearNotes">清空备注和链接</button>
+        </div>
+        <textarea class="note-export" id="noteExport" readonly placeholder="点击「导出备注和链接」后，这里会汇总所有地点备注和你添加的链接。"></textarea>
+      </article>
+    </section>
+
+    <p class="footer">100 日元约 4.6 元人民币；交通与营业信息以当天 Google Maps 和现场扣费为准。</p>
+  </main>
+  <div class="toast" id="toast">已复制</div>
+
+  <script>
+    const COLORS = { hub: '#256f64', place: '#c65f3a', transit: '#315f9f' };
+    const STORAGE_PREFIX = 'tokyo-trip-control-note:';
+    const LINKS_PREFIX = 'tokyo-trip-control-links:';
+
+    const DAYS = [
+      {
+        id: 'd0630',
+        tab: 'D1 到达',
+        short: '6/30',
+        title: '6/30 到达日：成田 -> 押上 -> 锦糸町',
+        subtitle: '入住和轻量补给，第一晚不加远距离点。',
+        cost: '¥1,550 / 约 71 元',
+        summary: [
+          ['最累段', '机场和押上站内移动，带行李预留时间。'],
+          ['交通费', '约 ¥1,550，约 71 元。']
+        ],
+        chain: [
+          ['hub', '成田机场'], ['transit', '京成 Access Express'], ['hub', '押上'],
+          ['transit', '半藏门线 1 站'], ['place', '锦糸町补给'], ['hub', '押上']
+        ],
+        route: [
+          ['14:30 后', '成田机场 -> 押上', '京成 Access Express / 京成线直达押上方向', '55-65 分', '约 ¥1,190', '约 55 元', '机场和押上站内移动，优先找电梯'],
+          ['傍晚', '押上入住/休息', '步行或短距离移动', '-', '0', '0', '无超过 1km'],
+          ['晚上', '押上 -> 锦糸町', '东京 Metro 半藏门线 1 站', '约 3 分', '约 ¥180', '约 8 元', '锦糸町站到 Arcakit 很近'],
+          ['晚上', "Akachanhonpo + MARKEY'S", '商场内步行', '60-90 分', '0', '0', '商场内移动，不计远距离'],
+          ['晚上', '锦糸町 -> 押上', '东京 Metro 半藏门线 1 站', '约 3 分', '约 ¥180', '约 8 元', '无超过 1km']
+        ],
+        places: [
+          p('成田机场', '千叶/成田 · 机场', 35.7720, 140.3929, 'hub', '抵达后先入境、取行李、找京成线。预计含入境和取行李约 60-90 分钟，机场内按指示去京成线。', 'Narita Airport', ['official'], '机场交通、入境后取票、到押上方向'),
+          p('押上', '东京东侧 · 住宿基点', 35.7101, 139.8129, 'hub', '东京几天的出发和回程基点，靠近押上站和晴空塔。当天重点是入住和整理行李。', 'Oshiage Station Tokyo', [], '最近出口、回程末班车、周边便利店'),
+          p('Arcakit Kinshicho', '锦糸町 · 商场', 35.6973, 139.8136, 'place', '锦糸町站旁商场，适合第一晚轻量补给和吃饭。站近、动线直接，适合短停。', 'Arcakit Kinshicho', [], '营业时间、楼层、晚餐选择'),
+          p('Akachanhonpo Kinshicho', '锦糸町 · 用品店', 35.6972, 139.8133, 'place', '大型生活用品和儿童用品店，适合补日用品、洗护、小物和旅行途中需要的消耗品。', 'Akachanhonpo Kinshicho', [], '营业时间、楼层、退税'),
+          p("MARKEY'S Kinshicho", '锦糸町 · 服饰店', 35.6971, 139.8134, 'place', '偏服饰小店，适合顺路看衣服和小配件，停留 15-25 分钟即可。', "MARKEY'S Kinshicho", [], '营业时间、店铺位置')
+        ]
+      },
+      {
+        id: 'd0701',
+        tab: 'D2 银座',
+        short: '7/1',
+        title: '7/1 银座购物日：13 店顺序',
+        subtitle: '三越为起点，成城石井为终点，顺序直接并入当天。',
+        cost: '¥440-580 / 约 20-27 元',
+        summary: [
+          ['最累段', '银座内部累计约 3.5-5km，超过 1km。'],
+          ['交通费', '约 ¥440-¥580，约 20-27 元。']
+        ],
+        chain: [
+          ['hub', '押上'], ['transit', '都营浅草线'], ['hub', '东银座/银座'],
+          ['place', '银座 13 店'], ['transit', '回程地铁'], ['hub', '押上']
+        ],
+        route: [
+          ['上午', '押上 -> 东银座/银座', '都营浅草线直通或少换乘组合', '约 20-30 分', '约 ¥220-¥290', '约 10-13 元', '出站后进入银座步行区域'],
+          ['上午-下午', '银座 13 店顺序逛', '三越 -> Isamiya -> Itoya -> MUJI -> 优衣库 -> ZARA -> Sanrio -> Kindal -> Loft -> BicCamera -> mont-bell -> KITTE -> 成城石井', '约 5-7 小时', '0', '0', '<span class="walk-alert">银座内部累计约 3.5-5km，超过 1km</span>'],
+          ['晚间', '银座/东京站附近 -> 押上', '银座线/浅草线/半藏门线组合，按当时位置查最近站', '约 25-40 分', '约 ¥220-¥290', '约 10-13 元', '成城石井买完直接回押上']
+        ],
+        places: [
+          p('三越百货', '银座 · 银座三越，百货商场', 35.6719, 139.7658, 'place', '银座代表百货商场，适合看退税、服务台、化妆品、食品楼层和日式百货动线。建议作为当天集合起点。', 'Ginza Mitsukoshi', ['official'], '退税、楼层、营业时间、服务台'),
+          p('いさみや 銀座本店', '银座 · Isamiya 本店，儿童服饰店', 35.6725, 139.7682, 'place', '日本本土儿童服饰和小物店，适合看衣服、袜子、礼物类小东西，预计 20-30 分钟。', 'いさみや 銀座本店', [], '营业时间、店铺位置、是否退税'),
+          p('Ginza Itoya', '银座 · 伊东屋，文具店', 35.6714, 139.7684, 'place', '文具爱好者重点店，适合买手账、笔、本子、卡片和小礼物。楼层多，建议预留 45-60 分钟。', 'Ginza Itoya', ['official'], '楼层、限定款、营业时间、退税'),
+          p('ATELIER MUJI GINZA', '银座 · 无印良品画廊/展览空间', 35.6728, 139.7647, 'place', '无印良品的展览空间，适合顺路看设计展、生活方式展示和店内限定内容，短停 20-30 分钟。', 'ATELIER MUJI GINZA', [], '展览内容、营业时间、楼层'),
+          p('优衣库 银座店', '银座 · UNIQLO 银座旗舰店，服装店', 35.6703, 139.7647, 'place', 'UNIQLO 银座旗舰店，楼层多、货较全，适合买基础款、防晒衣、内搭和旅行中需要补的衣服。', 'UNIQLO Ginza', [], '楼层、免税、限定款、营业时间'),
+          p('ZARA Ginza Store', '银座 · ZARA 服装店', 35.6682, 139.7669, 'place', '服装店，适合顺路快速看当季款。与其他点相比日本特色不强，建议控制停留时间。', 'ZARA Ginza Store', [], '营业时间、店铺位置'),
+          p('Sanrio NISHIGINZA店', '西银座 · 三丽鸥周边店', 35.6721, 139.7622, 'place', 'Hello Kitty、Kuromi、Cinnamoroll 等周边，适合买小礼物、钥匙扣、文具和限定款。', 'Sanrio NISHIGINZA', [], '限定款、营业时间、楼层'),
+          p('kindal ginza second hand store', '银座 · Kindal 中古店', 35.6685, 139.7644, 'place', '二手服饰和中古店，适合看品牌服饰、包和配件。货品看缘分，建议短逛。', 'kindal ginza second hand store', [], '营业时间、货品类型、店铺入口'),
+          p('Ginza Loft', '银座 · Loft，杂货/文具/生活用品店', 35.6738, 139.7642, 'place', '杂货、文具、美妆、生活用品集合店，适合买伴手礼、小工具、旅行用品和季节限定。', 'Ginza Loft', ['official'], '楼层、限定品、退税、营业时间'),
+          p('Air BicCamera 銀座店', '银座 · BicCamera 电器数码店', 35.6747, 139.7620, 'place', '电器数码店，适合买小电器、充电器、相机配件、美容仪和药妆类补充，注意退税排队。', 'Air BicCamera Ginza', ['official'], '退税、楼层、优惠券、营业时间'),
+          p('mont-bell Tokyo Kyobashi', '京桥 · mont-bell 户外用品店', 35.6768, 139.7706, 'place', '日本户外品牌店，适合买防晒、帽子、雨具、轻量包和户外衣物。', 'mont-bell Tokyo Kyobashi', [], '营业时间、库存、楼层'),
+          p('KITTE Marunouchi', '丸之内 · 东京站旁购物餐饮商场', 35.6798, 139.7649, 'place', '东京站旁购物餐饮商场，建筑空间好看，也适合作为去东京站前后的休息和吃饭点。', 'KITTE Marunouchi', ['official', 'food'], '餐厅排队、楼层、观景、营业时间'),
+          p('成城石井', '银座/东京站附近 · Seijo Ishii 精品超市', 35.6801, 139.7652, 'place', '精品超市，适合买零食、熟食、水果、饮料、奶制品和第二天路上的食品补给。放在最后买完直接回押上。', 'Seijo Ishii Marunouchi Tokyo Station', ['food'], '熟食、水果、营业时间、最近回程站')
+        ]
+      },
+      {
+        id: 'd0702',
+        tab: 'D3 东侧',
+        short: '7/2',
+        title: '7/2 浅草 + 秋叶原 + 芝公园附近',
+        subtitle: '东侧景点和店铺为主，晚上只看芝公园附近小公园和建筑定位点。',
+        cost: '¥900-1,150 / 约 41-53 元',
+        summary: [
+          ['最累段', '芝公园附近到部分地铁站约 1.0-1.3km，超过 1km。'],
+          ['交通费', '约 ¥900-¥1,150，约 41-53 元。']
+        ],
+        chain: [
+          ['hub', '押上'], ['transit', '浅草线/步行组合'], ['place', '浅草寺/雷门'],
+          ['transit', '银座线/JR'], ['place', '秋叶原'], ['transit', '地铁'], ['place', '芝公园附近'], ['hub', '押上']
+        ],
+        route: [
+          ['上午', '押上 -> 浅草', '都营浅草线/东京 Metro 或短距离组合', '约 10-20 分', '约 ¥180-¥220', '约 8-10 元', '浅草站到雷门附近步行不远'],
+          ['上午-午餐', '浅草寺/雷门附近午餐', '步行', '90-150 分', '0', '0', '浅草人流多，控制范围'],
+          ['下午', '浅草 -> 秋叶原', '银座线到末广町或 JR/地铁组合', '约 15-25 分', '约 ¥180-¥320', '约 8-15 元', '秋叶原站周边移动'],
+          ['傍晚', '秋叶原 -> 芝公园附近', 'JR + 都营线 / 地铁组合', '约 25-35 分', '约 ¥300-¥420', '约 14-19 元', '<span class="walk-alert">部分路段约 1.0-1.3km，超过 1km</span>'],
+          ['晚上', '芝公园附近 -> 押上', '都营浅草线/大江户线组合', '约 30-40 分', '约 ¥240-¥280', '约 11-13 元', '如果离地铁站远可短程打车到站']
+        ],
+        places: [
+          p('押上', '东京东侧 · 住宿基点', 35.7101, 139.8129, 'hub', '当天从押上出发，东侧路线换乘较少。', 'Oshiage Station Tokyo', [], '最近出口、回程路线'),
+          p('浅草寺', '浅草 · 寺院/东京经典景点', 35.7148, 139.7967, 'place', '东京经典景点，适合看雷门、仲见世、浅草寺本堂。人多时不要把范围拉太大。', 'Sensoji Temple', ['official'], '人流、拍照点、开放时间'),
+          p('雷门附近午餐', '浅草 · 午餐区域', 35.7107, 139.7966, 'place', '浅草午餐区域，适合现场用地图筛选排队少、评价稳定、还在营业的店。', 'Kaminarimon lunch Asakusa', ['food'], '排队、评分、午餐营业时间'),
+          p('秋叶原', '秋叶原 · 动漫/电器/模型街区', 35.6984, 139.7730, 'place', '适合逛电器、动漫、模型、扭蛋和游戏相关店。站周边密集，控制店铺数量更顺。', 'Akihabara Tokyo', [], '店铺集中区域、营业时间'),
+          p('芝公园附近小公园', '芝公园 · 城市公园', 35.6562, 139.7483, 'place', '晚间轻量看城市公园和附近夜景氛围，不做大范围绕行。', 'Shiba Park Tokyo', [], '夜景角度、最近地铁站'),
+          p('KALEDOTOWER', '芝公园附近 · 建筑定位点', 35.6567, 139.7489, 'place', '作为附近建筑定位点使用，适合现场打开地图确认拍照位置和回程站点。', 'KALEDOTOWER Tokyo', [], '定位、最近出口、步行距离')
+        ]
+      },
+      {
+        id: 'd0703',
+        tab: 'D4 西侧',
+        short: '7/3',
+        title: '7/3 青山 + 涩谷 + 三轩茶屋 + 新宿夜景轻量版',
+        subtitle: '保留三轩茶屋和 Carrot Tower，晚上新宿只轻量看霓虹入口。',
+        cost: '¥1,020-1,300 / 约 47-60 元',
+        summary: [
+          ['最累段', '青山直接走到涩谷约 1.5km 以上，建议坐一站。'],
+          ['交通费', '约 ¥1,020-¥1,300，约 47-60 元。']
+        ],
+        chain: [
+          ['hub', '押上'], ['transit', '半藏门线'], ['place', '青山'],
+          ['transit', '一站到涩谷'], ['place', '涩谷'], ['transit', '田园都市线'], ['place', '三轩茶屋'], ['transit', 'JR/地铁'], ['place', '新宿']
+        ],
+        route: [
+          ['上午', '押上 -> 表参道/青山一丁目', '半藏门线直通或少换乘组合', '约 35-45 分', '约 ¥250-¥300', '约 12-14 元', '出站后按店铺顺序步行'],
+          ['上午-午餐', '青山店铺', '10mois AOYAMA、SOU·SOU 等步行', '90-150 分', '0', '0', '控制在青山小范围内'],
+          ['下午', '表参道 -> 涩谷', '半藏门线/银座线 1 站', '约 3 分', '约 ¥180', '约 8 元', '<span class="walk-alert">青山直接走到涩谷约 1.5km 以上，超过 1km</span>'],
+          ['下午', '涩谷区域', 'The North Face、Shibuya Sky 等', '120-180 分', '按门票另计', '按门票另计', 'Shibuya Sky 需看预约和天气'],
+          ['傍晚', '涩谷 -> 三轩茶屋', '东急田园都市线', '约 5 分', '约 ¥180-¥220', '约 8-10 元', '车站周边和 Carrot Tower'],
+          ['晚上', '三轩茶屋 -> 新宿', '东急田园都市线回涩谷 + JR 到新宿', '约 25-35 分', '约 ¥360-¥420', '约 17-19 元', '新宿只做 30-45 分钟轻量夜景'],
+          ['晚上', '新宿 -> 押上', 'JR + 半藏门线/都营线组合', '约 35-50 分', '约 ¥250-¥360', '约 12-17 元', '按当时位置查最少换乘路线']
+        ],
+        places: [
+          p('10mois AOYAMA', '青山 · 儿童/生活方式店', 35.6650, 139.7155, 'place', '设计感儿童用品和生活方式店，适合看衣物、餐具、出行小物和礼物。', '10mois AOYAMA', [], '营业时间、店内货品、路线'),
+          p('SOU·SOU KYOTO Aoyama Store', '青山 · 服装/杂货', 35.6668, 139.7157, 'place', '京都风格服装和杂货，图案辨识度高，适合买衣服、小物或伴手礼。', 'SOU SOU KYOTO Aoyama Store', [], '营业时间、库存、店铺入口'),
+          p('表参道/青山', '青山 · 街区', 35.6652, 139.7124, 'place', '青山和表参道是设计店、咖啡和街拍区域，适合小范围走，不建议一路走到涩谷。', 'Omotesando Aoyama Tokyo', [], '街区路线、咖啡店、最近车站'),
+          p('The North Face Mountain Shibuya', '涩谷 · 户外用品店', 35.6619, 139.7007, 'place', '涩谷户外用品店，适合买户外衣物、包、防晒和机能小物。', 'The North Face Mountain Shibuya', [], '营业时间、楼层、库存'),
+          p('Shibuya Sky', '涩谷 · 观景台', 35.6585, 139.7020, 'place', '涩谷观景台，视野好但受天气和预约影响。票务、入场时间以官网为准。', 'Shibuya Sky', ['official'], '门票、预约、天气、入场时间'),
+          p('三轩茶屋', '世田谷 · 生活街区', 35.6436, 139.6702, 'place', '生活感街区，适合咖啡、小店、车站周边散步。保留这一站，范围不要拉太大。', 'Sangenjaya Tokyo', ['food'], '咖啡、散步路线、晚间氛围'),
+          p('Carrot Tower', '三轩茶屋 · 地标/展望空间', 35.6435, 139.6697, 'place', '三轩茶屋地标，高层展望空间适合顺路看城市景观。开放情况以现场和官网信息为准。', 'Carrot Tower Sangenjaya', ['official'], '开放时间、展望层、入口'),
+          p('新宿东口/歌舞伎町入口', '新宿 · 夜景打卡区域', 35.6938, 139.7034, 'place', '晚上看霓虹、东口、歌舞伎町入口和哥斯拉头即可。30-45 分钟轻量打卡。', 'Shinjuku East Exit Kabukicho Godzilla Head', [], '夜景路线、人流、回程路线')
+        ]
+      },
+      {
+        id: 'd0704',
+        tab: 'D5 镰仓',
+        short: '7/4',
+        title: '7/4 镰仓 + 江之岛日归',
+        subtitle: '东京出发，镰仓小町通和鹤冈八幡宫，再到江之岛看海。',
+        cost: '¥3,250-3,850 / 约 150-177 元',
+        summary: [
+          ['最累段', '镰仓站到八幡宫约 1.1km，江之岛站到海边约 1.0-1.3km。'],
+          ['交通费', '约 ¥3,250-¥3,850，约 150-177 元。']
+        ],
+        chain: [
+          ['hub', '押上'], ['transit', '浅草线到新桥'], ['transit', 'JR 横须贺线'], ['place', '镰仓'],
+          ['transit', '江之电'], ['place', '江之岛'], ['transit', '藤泽/JR 回程'], ['hub', '押上']
+        ],
+        route: [
+          ['上午', '押上 -> 新桥', '都营浅草线', '约 25 分', '约 ¥280', '约 13 元', '站内换 JR'],
+          ['上午', '新桥 -> 镰仓', 'JR 横须贺线', '55-60 分', '约 ¥950', '约 44 元', '到镰仓站'],
+          ['上午-午餐', '小町通/鹤冈八幡宫一带', '步行', '90-120 分', '0', '0', '<span class="walk-alert">镰仓站到鹤冈八幡宫约 1.1km，超过 1km</span>'],
+          ['下午', '镰仓 -> 长谷/江之岛', '江之电分段移动', '25-35 分', '约 ¥520-¥640', '约 24-29 元', '<span class="walk-alert">江之岛站到海边/桥头约 1.0-1.3km，超过 1km</span>'],
+          ['傍晚', '江之岛看海', '步行，桥头和海边为主', '60-90 分', '0', '0', '不做大范围绕行'],
+          ['晚上', '江之岛/藤泽 -> 押上', '江之电到藤泽 + JR + 地铁回押上', '100-120 分', '约 ¥1,500-¥1,700', '约 69-78 元', '回程较久，尽量别太晚']
+        ],
+        places: [
+          p('新桥站', '东京 · 换乘站', 35.6663, 139.7586, 'hub', '从押上换 JR 横须贺线去镰仓的中转点。站内换乘预留时间。', 'Shimbashi Station Tokyo', [], '换乘路线、站台、厕所'),
+          p('镰仓站', '镰仓 · 日归起点', 35.3192, 139.5504, 'hub', '镰仓主入口，去小町通和八幡宫方便。到站后先确认回程和江之电方向。', 'Kamakura Station', [], '江之电方向、回程路线'),
+          p('小町通', '镰仓 · 商店街', 35.3211, 139.5521, 'place', '镰仓商店街，适合吃饭、买小东西、轻量逛。人多路窄，建议控制店铺数量。', 'Komachi-dori Street Kamakura', ['food'], '午餐、排队、伴手礼'),
+          p('鹤冈八幡宫', '镰仓 · 神社', 35.3261, 139.5564, 'place', '镰仓代表性神社，从镰仓站步行约 1.1km，超过 1km。适合看参道和本殿。', 'Tsurugaoka Hachimangu', ['official'], '开放时间、参道、人流'),
+          p('江之岛站/江之岛海边', '江之岛 · 看海散步', 35.3118, 139.4873, 'place', '看海、拍照、轻量散步。江之岛站到海边/桥头约 1.0-1.3km，超过 1km。', 'Enoshima Station Kanagawa', [], '天气、海边路线、回程'),
+          p('藤泽站', '藤泽 · 回程换乘', 35.3388, 139.4870, 'hub', '回东京的换乘点。当天回程较久，建议别拖到太晚。', 'Fujisawa Station', [], '回东京路线、站台')
+        ]
+      },
+      {
+        id: 'd0705',
+        tab: 'D6 伊豆',
+        short: '7/5',
+        title: '7/5 东京 -> 热海/伊东方向',
+        subtitle: '移动日，带行李时优先少换乘和舒服。',
+        cost: '¥2,530-3,090 / 约 116-142 元',
+        summary: [
+          ['最累段', '东京站换乘和带行李找站台。'],
+          ['交通费', '约 ¥2,530-¥3,090，约 116-142 元。']
+        ],
+        chain: [
+          ['hub', '押上'], ['transit', '东京站'], ['transit', 'JR 东海道线/新干线'], ['hub', '热海'], ['transit', 'JR 伊东线'], ['hub', '伊东']
+        ],
+        route: [
+          ['上午', '押上 -> 东京站', '半藏门线/丸之内线或浅草线/JR 组合', '30-40 分', '约 ¥220-¥360', '约 10-17 元', '带行李优先少换乘'],
+          ['上午-中午', '东京站 -> 热海', 'JR 东海道线普通/快速；更舒服可选新干线或特急', '90-120 分', '约 ¥1,980-¥2,310', '约 91-106 元', '普通车省钱，新干线/特急更舒服但更贵'],
+          ['中午-下午', '热海 -> 伊东', 'JR 伊东线', '约 25 分', '约 ¥330-¥420', '约 15-19 元', '伊东站出站后按酒店位置决定步行或出租']
+        ],
+        places: [
+          p('押上', '东京东侧 · 住宿基点', 35.7101, 139.8129, 'hub', '带行李出发。移动日不要加太多购物，先保证顺利到东京站。', 'Oshiage Station Tokyo', [], '出发路线、最近出口'),
+          p('东京站', '丸之内/东京站 · 换乘站', 35.6812, 139.7671, 'hub', '去热海/伊东的主要换乘站。站大、人多，预留换乘时间，不赶极限班次。', 'Tokyo Station', ['official', 'food'], '站台、便当、换乘时间'),
+          p('热海站', '静冈/热海 · 伊豆门户', 35.1036, 139.0778, 'hub', '伊豆方向门户，可换 JR 伊东线。如果需要休息，可在站内或周边短暂停留。', 'Atami Station', [], '换乘、站内补给'),
+          p('伊东站', '伊东 · 伊豆落点', 34.9749, 139.0925, 'hub', '伊豆住宿/游玩方向落点。到站后根据酒店距离决定步行或出租。', 'Ito Station Shizuoka', [], '酒店方向、出租车、公交')
+        ]
+      }
+    ];
+
+    function p(name, area, lat, lng, type, detail, query, flags = [], research = '') {
+      return { name, area, lat, lng, type, detail, query, flags, research };
+    }
+
+    function searchUrl(engine, query) {
+      const q = encodeURIComponent(query);
+      if (engine === 'gmap') return `https://www.google.com/maps/search/?api=1&query=${q}`;
+      return '#';
+    }
+
+    let map;
+    let markers = [];
+    let routeLine;
+    let activeDay = 0;
+
+    function init() {
+      renderTabs();
+      renderDay(0);
+      initMap();
+      initNotesActions();
+    }
+
+    function renderTabs() {
+      document.getElementById('tabs').innerHTML = DAYS.map((day, index) => (
+        `<button class="tab ${index === activeDay ? 'active' : ''}" type="button" data-day="${index}">${day.tab}</button>`
+      )).join('');
+      document.querySelectorAll('.tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          setActiveDay(Number(btn.dataset.day));
+        });
+      });
+    }
+
+    function setActiveDay(index) {
+      activeDay = index;
+      renderTabs();
+      renderDay(index);
+      updateMap(index);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function renderDay(index) {
+      const day = DAYS[index];
+      document.getElementById('mapBadge').textContent = day.tab;
+      document.getElementById('dayPanel').innerHTML = `
+        <article class="route-card">
+          <div class="day-title-row">
+            <div>
+              <h2>${day.title}</h2>
+              <p>${day.subtitle}</p>
+            </div>
+            <div class="cost-pill">${day.cost}</div>
+          </div>
+          <div class="chain">${renderChain(day.chain)}</div>
+          <div class="mini-grid">${day.summary.map(([label, value]) => `<div class="mini"><span>${label}</span><b>${value}</b></div>`).join('')}</div>
+        </article>
+        <article class="block">
+          <div class="block-head"><h3>公共交通</h3><span>只显示坐车/换乘段，费用为成人单人估算</span></div>
+          <div class="transport-list">${day.route.filter(isPublicTransit).map(renderTransport).join('')}</div>
+        </article>
+        <article class="block">
+          <div class="block-head"><h3>地点详情</h3><span>地图 / 备注 / 链接</span></div>
+          <div class="place-list">${day.places.map((place, placeIndex) => renderPlace(day, place, placeIndex)).join('')}</div>
+        </article>
+      `;
+      bindPlaceTools();
+    }
+
+    function renderChain(chain) {
+      return chain.map(([type, label], index) => {
+        const cls = label.includes('km') || label.includes('步行') ? 'warn' : type;
+        return `${index ? '<span class="arrow">-&gt;</span>' : ''}<span class="chip ${cls}">${label}</span>`;
+      }).join('');
+    }
+
+    function renderTransport(row) {
+      const [time, place, route, duration, yen, rmb, walk] = row;
+      return `
+        <div class="transport-item">
+          <div class="transport-main"><strong>${place}</strong><small>${time}</small></div>
+          <div class="transport-route">${route}</div>
+          <div class="transport-meta"><span>${duration}</span><span>${yen}</span><span>${rmb}</span><span>${walk}</span></div>
+        </div>
+      `;
+    }
+
+    function isPublicTransit(row) {
+      const text = `${row[1]} ${row[2]}`;
+      const transitWords = /(京成|Access|都营|浅草线|半藏门线|银座线|丸之内线|大江户线|东京 Metro|地铁|JR|东急|田园都市线|江之电|东海道线|新干线|伊东线|横须贺线|藤泽)/;
+      return transitWords.test(text);
+    }
+
+    function renderPlace(day, place, index) {
+      const noteKey = `${day.id}-${index + 1}`;
+      const note = getNote(noteKey);
+      const links = getLinks(noteKey);
+      return `
+        <section class="place-card">
+          <div class="place-head">
+            <span class="pin ${place.type === 'hub' ? 'hub' : ''}">${index + 1}</span>
+            <div><h4>${place.name}</h4><small>${place.area}</small></div>
+          </div>
+          <p>${place.detail}</p>
+          ${note ? `<div class="saved-note"><b>我的备注：</b>${escapeHtml(note)}</div>` : ''}
+          ${renderSavedLinks(noteKey, links)}
+          <div class="actions">
+            <a class="map-action" href="${searchUrl('gmap', place.query)}" target="_blank" rel="noopener">打开地图</a>
+            <button type="button" class="note-toggle" data-note-key="${noteKey}">${note ? '编辑备注' : '添加备注'}</button>
+            <button type="button" class="link-toggle" data-note-key="${noteKey}">添加链接</button>
+          </div>
+          <div class="inline-panel hidden" data-note-panel="${noteKey}">
+            <textarea data-note-input="${noteKey}" placeholder="写这里：想买什么、现场情况、预约时间、排队信息...">${escapeHtml(note)}</textarea>
+            <div class="panel-actions">
+              <button type="button" class="save note-save" data-note-key="${noteKey}">保存备注</button>
+              <button type="button" class="note-cancel" data-note-key="${noteKey}">取消</button>
+              ${note ? `<button type="button" class="note-delete" data-note-key="${noteKey}">删除备注</button>` : ''}
+            </div>
+          </div>
+          <div class="inline-panel hidden" data-link-panel="${noteKey}">
+            <input data-link-title="${noteKey}" placeholder="链接标题，例如：小红书银座伊东屋排队攻略">
+            <input data-link-url="${noteKey}" placeholder="粘贴链接 URL">
+            <div class="panel-actions">
+              <button type="button" class="save link-save" data-note-key="${noteKey}">保存链接</button>
+              <button type="button" class="link-cancel" data-note-key="${noteKey}">取消</button>
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    function renderSavedLinks(noteKey, links) {
+      if (!links.length) return '';
+      const rows = links.map((link, index) => `
+        <div class="saved-link-row">
+          <a href="${escapeAttr(link.url)}" target="_blank" rel="noopener">${escapeHtml(link.title)}</a>
+          <button type="button" class="delete-link" data-note-key="${noteKey}" data-link-index="${index}">删除</button>
+        </div>
+      `).join('');
+      return `<div class="saved-links"><b>已添加链接：</b>${rows}</div>`;
+    }
+
+    function escapeAttr(value) {
+      return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function initMap() {
+      if (!window.L) return;
+      map = L.map('map', {
+        zoomControl: true,
+        scrollWheelZoom: false,
+        attributionControl: true
+      }).setView([35.67, 139.76], 11);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+      updateMap(activeDay);
+    }
+
+    function iconFor(place, index) {
+      return L.divIcon({
+        className: place.type === 'hub' ? 'hub-marker' : 'place-marker',
+        html: String(index + 1),
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+        popupAnchor: [0, -15]
+      });
+    }
+
+    function updateMap(index) {
+      if (!map) return;
+      const day = DAYS[index];
+      markers.forEach(marker => marker.remove());
+      markers = [];
+      if (routeLine) routeLine.remove();
+      const latlngs = day.places.map(place => [place.lat, place.lng]);
+      routeLine = L.polyline(latlngs, { color: COLORS.transit, weight: 4, opacity: .82 }).addTo(map);
+      day.places.forEach((place, placeIndex) => {
+        const marker = L.marker([place.lat, place.lng], { icon: iconFor(place, placeIndex) })
+          .addTo(map)
+          .bindPopup(`<strong>${placeIndex + 1}. ${place.name}</strong><br>${place.area}<br><a href="${searchUrl('gmap', place.query)}" target="_blank" rel="noopener">打开地图</a>`);
+        markers.push(marker);
+      });
+      map.fitBounds(routeLine.getBounds(), { padding: [22, 22], maxZoom: 14 });
+      setTimeout(() => map.invalidateSize(), 80);
+    }
+
+    function getNote(noteKey) {
+      return localStorage.getItem(`${STORAGE_PREFIX}${noteKey}`) || '';
+    }
+
+    function saveNote(noteKey, value) {
+      const key = `${STORAGE_PREFIX}${noteKey}`;
+      const text = value.trim();
+      if (text) localStorage.setItem(key, text);
+      else localStorage.removeItem(key);
+    }
+
+    function getLinks(noteKey) {
+      try {
+        const links = JSON.parse(localStorage.getItem(`${LINKS_PREFIX}${noteKey}`) || '[]');
+        return Array.isArray(links) ? links.filter(link => link && link.title && link.url) : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function saveLinks(noteKey, links) {
+      const cleanLinks = links.filter(link => link && link.title && link.url);
+      const key = `${LINKS_PREFIX}${noteKey}`;
+      if (cleanLinks.length) localStorage.setItem(key, JSON.stringify(cleanLinks));
+      else localStorage.removeItem(key);
+    }
+
+    function normalizeUrl(value) {
+      const url = value.trim();
+      if (!url) return '';
+      if (/^https?:\/\//i.test(url)) return url;
+      return `https://${url}`;
+    }
+
+    function bindPlaceTools() {
+      document.querySelectorAll('.note-toggle').forEach(button => {
+        button.addEventListener('click', () => togglePanel('note', button.dataset.noteKey));
+      });
+      document.querySelectorAll('.link-toggle').forEach(button => {
+        button.addEventListener('click', () => togglePanel('link', button.dataset.noteKey));
+      });
+      document.querySelectorAll('.note-cancel').forEach(button => {
+        button.addEventListener('click', () => closePanel('note', button.dataset.noteKey));
+      });
+      document.querySelectorAll('.link-cancel').forEach(button => {
+        button.addEventListener('click', () => closePanel('link', button.dataset.noteKey));
+      });
+      document.querySelectorAll('.note-save').forEach(button => {
+        button.addEventListener('click', () => {
+          const noteKey = button.dataset.noteKey;
+          const input = document.querySelector(`[data-note-input="${noteKey}"]`);
+          saveNote(noteKey, input.value);
+          renderDay(activeDay);
+          showToast('备注已保存');
+        });
+      });
+      document.querySelectorAll('.note-delete').forEach(button => {
+        button.addEventListener('click', () => {
+          saveNote(button.dataset.noteKey, '');
+          renderDay(activeDay);
+          showToast('备注已删除');
+        });
+      });
+      document.querySelectorAll('.link-save').forEach(button => {
+        button.addEventListener('click', () => {
+          const noteKey = button.dataset.noteKey;
+          const titleInput = document.querySelector(`[data-link-title="${noteKey}"]`);
+          const urlInput = document.querySelector(`[data-link-url="${noteKey}"]`);
+          const title = titleInput.value.trim();
+          const url = normalizeUrl(urlInput.value);
+          if (!title || !url) {
+            showToast('请填写标题和链接');
+            return;
+          }
+          saveLinks(noteKey, [...getLinks(noteKey), { title, url }]);
+          renderDay(activeDay);
+          showToast('链接已添加');
+        });
+      });
+      document.querySelectorAll('.delete-link').forEach(button => {
+        button.addEventListener('click', () => {
+          const noteKey = button.dataset.noteKey;
+          const index = Number(button.dataset.linkIndex);
+          const links = getLinks(noteKey);
+          links.splice(index, 1);
+          saveLinks(noteKey, links);
+          renderDay(activeDay);
+          showToast('链接已删除');
+        });
+      });
+    }
+
+    function togglePanel(type, noteKey) {
+      const panel = document.querySelector(`[data-${type}-panel="${noteKey}"]`);
+      if (!panel) return;
+      panel.classList.toggle('hidden');
+      if (!panel.classList.contains('hidden')) {
+        const input = panel.querySelector('textarea, input');
+        if (input) input.focus();
+      }
+    }
+
+    function closePanel(type, noteKey) {
+      const panel = document.querySelector(`[data-${type}-panel="${noteKey}"]`);
+      if (panel) panel.classList.add('hidden');
+    }
+
+    function initNotesActions() {
+      document.getElementById('exportNotes').addEventListener('click', () => {
+        const lines = [];
+        DAYS.forEach(day => {
+          day.places.forEach((place, index) => {
+            const noteKey = `${day.id}-${index + 1}`;
+            const note = getNote(noteKey).trim();
+            const links = getLinks(noteKey);
+            if (!note && !links.length) return;
+            const block = [`【${day.title}】${place.name}`];
+            if (note) block.push(`备注：${note}`);
+            if (links.length) {
+              block.push('链接：');
+              links.forEach(link => block.push(`- ${link.title} ${link.url}`));
+            }
+            lines.push(block.join('\n'));
+          });
+        });
+        const box = document.getElementById('noteExport');
+        box.value = lines.length ? lines.join('\n\n') : '目前还没有填写备注或链接。';
+        box.focus();
+        box.select();
+      });
+      document.getElementById('clearNotes').addEventListener('click', () => {
+        if (!confirm('确定清空当前浏览器里的所有备注和链接吗？')) return;
+        DAYS.forEach(day => {
+          day.places.forEach((place, index) => {
+            const noteKey = `${day.id}-${index + 1}`;
+            localStorage.removeItem(`${STORAGE_PREFIX}${noteKey}`);
+            localStorage.removeItem(`${LINKS_PREFIX}${noteKey}`);
+          });
+        });
+        renderDay(activeDay);
+        document.getElementById('noteExport').value = '';
+        showToast('备注和链接已清空');
+      });
+    }
+
+    function showToast(text) {
+      const toast = document.getElementById('toast');
+      toast.textContent = text;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 1500);
+    }
+
+    init();
+  </script>
+</body>
+</html>
